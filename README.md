@@ -1,6 +1,6 @@
 # Okyline Language Specification
 
-![Spec Status](https://img.shields.io/badge/spec-Draft_1.0-blue)
+![Spec Status](https://img.shields.io/badge/spec-Draft_1.0.0-blue)
 ![License](https://img.shields.io/badge/license-CC--BY--SA%204.0-green)
 ![Maintained by](https://img.shields.io/badge/maintained_by-Akwatype-orange)
 
