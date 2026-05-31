@@ -1,11 +1,12 @@
+
 ---
 description: Okyline Expression Language specification - a pure and deterministic language for computed validations, cross-field calculations, and conditional business logic.
 ---
 
-# Annex C — Okyline Expression Language (Normative)
+# Annex C - Okyline Expression Language (Normative)
 
-**Version:** 1.4.0
-**Date:** April 2026
+**Version:** 1.7.0
+**Date:** May 2026
 **Status:** Draft
 
  License: This annex is part of the Open Okyline Language Specification and is subject to the same license terms (CC
@@ -26,17 +27,17 @@ It specifies:
 - the **syntax** for referencing expressions in field constraints (`(%Name)`)
 - the **grammar**, **operators**, and **evaluation semantics** of expressions
 
-Implementations claiming Okyline 1.4.0 **Level 3** conformance (computed business invariants) **MUST** implement the rules described in this annex.
+Implementations claiming Okyline 1.7.0 **Level 3** conformance (computed business invariants) **MUST** implement the rules described in this annex.
 
 The Expression Language is an **integral component** of Okyline, not a separate language. It extends the core validation model with computation and conditional logic while remaining **pure, deterministic, and side-effect-free**.
 
-Although this annex is part of the Okyline 1.4.0 Draft specification, the expression language defined here is considered stable for practical use.
+Although this annex is part of the Okyline 1.7.0 Draft specification, the expression language defined here is considered stable for practical use.
 
 ---
 
 ### Non-normative note
 
-The Expression Language can be used independently of validation, for example in documentation tools or template generators, but only the behaviors defined in this annex are considered part of the Okyline 1.4.0 normative model.
+The Expression Language can be used independently of validation, for example in documentation tools or template generators, but only the behaviors defined in this annex are considered part of the Okyline 1.7.0 normative model.
 
 
 ---
@@ -45,13 +46,13 @@ The Expression Language can be used independently of validation, for example in 
 
 The Okyline Expression Language defines the grammar and semantics used in `$compute` blocks and computed constraints.
 
-This annex is **normative**, meaning its contents define the expected behavior of conforming implementations of Okyline 1.4.0.
+This annex is **normative**, meaning its contents define the expected behavior of conforming implementations of Okyline 1.7.0.
 
 Expressions are pure, deterministic, and evaluated within the context of the object where they appear. All functions are **null-safe** and **side-effect free**.
 
 ---
 
-## C.2 Computed Expression Block — `$compute`
+## C.2 Computed Expression Block - `$compute`
 
 Okyline reserves the special block `$compute` as a container for named expressions. It is declared at the **root level**, alongside `$oky`.
 
@@ -59,11 +60,11 @@ Okyline reserves the special block `$compute` as a container for named expressio
 
 ```json
 {
-  "$oky": {
-    ...
-  },
   "$compute": {
     "ExpressionName": "expression body"
+  },
+  "$oky": {
+    ...
   }
 }
 ```
@@ -97,9 +98,51 @@ Okyline reserves the special block `$compute` as a container for named expressio
 - Circular dependencies MUST be detected at schema load time and cause a parsing error.
 - Expressions are evaluated lazily when referenced.
 
+### C.2.3 Parameterized Computes
+
+A compute may declare **formal parameters** by suffixing its name with a parenthesized, comma-separated list of identifiers. Parameters are bound to call-site values and are visible only inside the body of that compute.
+
+```json
+"$compute": {
+  "CategoryCheck(cat)": "category != cat || rate > 0",
+  "InRange(lo, hi)": "it >= lo && it <= hi"
+}
+```
+
+**Call syntax:** `%Name(arg1, arg2, ...)`. Argument count MUST equal the declared arity; a mismatch is a schema load error. When called from a **field constraint** (e.g. `"field|(%Name(arg))"`), arguments are limited to literals or dotted identifier paths; the full expression form is available when calling from within another compute body.
+
+```json
+"age|(%InRange(18, 120))": 30
+"rate|(%CategoryCheck('S'))": 20
+```
+
+**Scope rules:**
+
+- Parameter names MUST be valid identifiers and MUST NOT collide with the reserved special variables listed in §C.4.4 and §C.4.5 (`it`, `this`, `root`, `parent`, `index`, `size`, `prev`, `next`, `first`, `last`, `origin`, `isOrigin`, `isFirst`, `isLast`).
+- Inside the body, a parameter **shadows** a sibling field of the same name. The schema field remains accessible via `this.<field>` (see §C.4.3).
+- Parameters are **local** to the compute that declares them; they do not propagate to invoked computes. Each invoked compute receives only what is passed explicitly at its call site.
+- A compute with arity N MUST be called with N arguments; a bare `%Name` reference is reserved for arity 0.
+
+**Parameter value shape.** An argument is evaluated at the call site and bound to its parameter as-is - scalar, object, or list. Inside the body:
+
+- **Scalar:** use the parameter name directly (`p`).
+- **Object / map:** access members via `p.field` (and cascade for nested paths: `p.address.city`).
+- **List:** use the list-element access functions of §C.10.3 (`firstOf(p)`, `at(p, 0)`, `findFirst(p, pred)`, etc.) or iterate with aggregations (`sum(p, ...)`, `filter(p, ...)`, ...).
+
+```json
+"$compute": {
+  "GetAddress":    "customer.address",
+  "CheckCity(a)":  "a.city == 'Paris'",
+  "CheckDeep(a)":  "a.region.country == 'FR'",
+  "Total(lines)":  "sum(lines, LineExtensionAmount)"
+}
+```
+
+**Canonical name:** the identifier before the `(` is the canonical name used in collision checks, references, and error reporting. Declaring both `"F"` and `"F(a)"` in the same `$compute` block is a schema load error.
+
 ---
 
-## C.3 Usage in Field Constraints — `(%Name)`
+## C.3 Usage in Field Constraints - `(%Name)`
 
 To validate a field using a computed expression, reference it with the `(%ExpressionName)` syntax in the field's constraint declaration.
 
@@ -136,9 +179,9 @@ When a field references a computed expression:
 | Result                          | Validation                                                  |
 | ------------------------------- | ----------------------------------------------------------- |
 | `true`                          | Passes                                                      |
-| `false`                         | Fails — `Compute` error                                     |
-| Non-boolean (including `null`)  | Fails — `Compute` error ("*expression* has to be boolean")  |
-| Evaluation exception            | Fails — `Compute` error (exception message)                 |
+| `false`                         | Fails - `Compute` error                                     |
+| Non-boolean (including `null`)  | Fails - `Compute` error ("*expression* has to be boolean")  |
+| Evaluation exception            | Fails - `Compute` error (exception message)                 |
 
 Error reporting SHOULD include:
 
@@ -186,7 +229,7 @@ If you need both a range check and a computed validation, include the range chec
 2. Standard constraints (`@`, `{...}`, `~...~`)
 3. Computed expression validation (`(%Name)`)
 
-### C.3.4 Collection Fields — Container and Element Compute
+### C.3.4 Collection Fields - Container and Element Compute
 
 `(%Name)` can be applied to collection fields (scalar lists, object lists, and maps). When combined with the `->` separator (Core §5.2.2), it distinguishes **container-level** and **element-level** evaluation:
 
@@ -323,7 +366,38 @@ When an expression is evaluated as a **field constraint** (`(%Name)`), the varia
 }
 ```
 
-**Scope:** `it` is defined in the constraint expression and propagates to any referenced expression (`%Name`). In contexts where `it` is not defined (aggregations, standalone evaluations), referencing `it` resolves to `null`.
+**Scope:** `it` is defined in the constraint expression and propagates to any referenced expression (`%Name`).
+
+**Rebinding inside aggregation lambdas.** When an expression is evaluated as the lambda body of an aggregation function (`map`, `filter`, `countIf`, `exists`, `notExists`, `sumIf`, `sum`, `average`, `min`, `max`), `it` is **rebound** to the **current iteration element** for each evaluation of the body. This rebinding is local to the lambda - once the aggregation completes, `it` reverts to its outer value (the field being validated).
+
+When the aggregation operates on a **scalar collection** (numbers, strings, booleans), the lambda body uses `it` to reference the current scalar element directly:
+
+```js
+map([1, 2, 3], it + 10)             // → [11, 12, 13]
+filter([1, 2, 3, 4], it > 2)        // → [3, 4]
+exists(["a", "b", "c"], it == "b")  // → true
+countIf(chars(name), it == "a")     // → number of 'a' characters in name
+```
+
+When the aggregation operates on an **object collection**, the lambda body references the object's properties by name (the established 1.4.0 form); `it` then refers to the current object as a whole and is rarely needed:
+
+```js
+map(items, code)                    // existing form (named property)
+map(items, toUpperCase(code))       // existing form
+filter(items, active == true)       // existing form
+```
+
+**Nested collection items.** When the iterated element is **itself a collection** (a list of lists, a map of lists, etc.), `it` rebinds to that inner collection and can be passed to another aggregation function. This enables explicit nested-collection traversal without an implicit flatten:
+
+```js
+sum(map(matrix, sum(it)))           // total of all numbers in a list of lists
+map(groups, sum(it))                // sum of each list value of a map of lists
+countIf(map(rows, count(it)), it >= 3)   // count rows with at least 3 elements
+```
+
+In each example, the outer lambda iterates the parent collection and `it` is the inner collection (a list); the inner aggregation then reduces that list. Composition is explicit at every level - Okyline never flattens silently.
+
+In contexts where `it` is not defined (standalone evaluations outside any constraint or lambda), referencing `it` resolves to `null`.
 
 ### C.4.5 List Iteration Context
 
@@ -336,6 +410,8 @@ When an expression is evaluated inside the lambda of an aggregation function (`c
 | `next` | The element immediately after the current iteration element | Current element is last |
 | `first` | The first element of the iterated collection | Collection is empty |
 | `last` | The last element of the iterated collection | Collection is empty |
+| `index` | The 0-based index of the current iteration element | Never (always defined inside a lambda) |
+| `size` | The total number of elements in the iterated collection | Never (always defined inside a lambda) |
 
 All variables support dotted navigation: `origin.amount`, `prev.date`, `first.id`, `last.status`.
 
@@ -390,13 +466,28 @@ comparison       ::= addition ( (">" | "<" | ">=" | "<=") addition )*
 addition         ::= multiplication ( ("+" | "-") multiplication )*
 multiplication   ::= null_coalescing ( ("*" | "/") null_coalescing )*
 null_coalescing  ::= unary ( "??" unary )*
-unary            ::= ("!" | "-") unary | primary
-primary          ::= literal | identifier | compute_ref | function_call | "(" expression ")"
-compute_ref      ::= "%" identifier
+unary            ::= ("!" | "+" | "-") primary | primary
+primary          ::= ( literal | identifier | compute_ref | function_call | list_literal | "(" expression ")" ) member_access*
+member_access    ::= "." identifier
+compute_ref      ::= "%" identifier [ "(" [ arguments ] ")" ]
 function_call    ::= identifier "(" [ arguments ] ")"
+list_literal     ::= "[" [ arguments ] "]"
 arguments        ::= expression ( "," expression )*
 literal          ::= number | string | boolean | null
 identifier       ::= letter ( letter | digit | "_" )*
+```
+
+**Unary operators.** At most one leading unary operator per operand: `!x`, `-x`, `+x` are valid; `!!x`, `--x`, `+-x` are not. Two additive operators MUST NOT be adjacent (`a + -b`); parenthesize instead: `a + (-b)`.
+
+**Member access.** A `.identifier` postfix retrieves a named field from an object returned by any expression: `firstOf(items).amount`, `%getParty('S').name`, `findFirst(lines, cat == 'S').id`. Dotted paths on bare identifiers (e.g. `parent.x.y`) are tokenized as a single identifier and resolved via the path-navigation rules of §C.4.3; the `member_access` postfix only applies when a `.` follows an expression terminator (`)`, `]`) or another `member_access`. Resolution on a `null` base yields `null`.
+
+**List literals.** A bracketed comma-separated sequence of expressions produces an in-memory list. List literals can appear anywhere a value is expected, including as arguments to aggregation functions and to `in()`. The empty list `[]` is allowed.
+
+```js
+sum([1, 2, 3])                       // → 6
+in(status, ["DRAFT", "SENT", "PAID"]) // → true if status is one of the listed values
+join(["a", "b", "c"], "-")           // → "a-b-c"
+count([])                            // → 0
 ```
 
 ---
@@ -406,7 +497,7 @@ identifier       ::= letter ( letter | digit | "_" )*
 | Operator | Type | Description | Example | Null Behavior |
 |----------|------|-------------|---------|---------------|
 | `??` | Null coalescing | Returns left if non-null, otherwise right | `price ?? 0` → 0 | Short-circuits; high precedence |
-| `+` | Arithmetic | Addition | `2 + 3` → 5 | Null propagates — Exception: string concatenation treats null as `""` |
+| `+` | Arithmetic | Addition | `2 + 3` → 5 | Null propagates - Exception: string concatenation treats null as `""` |
 | `-` | Arithmetic | Subtraction | `5 - 2` → 3 | Null propagates |
 | `*` | Arithmetic | Multiplication | `3 * 2` → 6 | Null propagates |
 | `/` | Arithmetic | Division | `6 / 2` → 3.0 | Null propagates; division by zero → null |
@@ -467,10 +558,10 @@ total = (price ?? 0) * (quantity ?? 1)
 | `month(date)` | Extracts month. | `month("2024-03-15")` → 3 |
 | `day(date)` | Extracts day of month. | `day("2024-03-15")` → 15 |
 | `dayOfWeek(date)` | Day of week (MON=1, SUN=7). | `dayOfWeek("2024-03-15")` → 5 |
-| `dayOfYear(date)` | Day of year (1–366). | `dayOfYear("2024-03-15")` → 75 |
-| `weekOfYear(date)` | ISO week number (1–53). | `weekOfYear("2024-01-01")` → 1 |
-| `quarter(date)` | Quarter (1–4). | `quarter("2024-09-15")` → 3 |
-| `semester(date)` | Semester (1–2). | `semester("2024-09-15")` → 2 |
+| `dayOfYear(date)` | Day of year (1-366). | `dayOfYear("2024-03-15")` → 75 |
+| `weekOfYear(date)` | ISO week number (1-53). | `weekOfYear("2024-01-01")` → 1 |
+| `quarter(date)` | Quarter (1-4). | `quarter("2024-09-15")` → 3 |
+| `semester(date)` | Semester (1-2). | `semester("2024-09-15")` → 2 |
 | `before(date1, date2)` | True if `date1` is before `date2`. | `before("2024-01-01","2024-12-31")` → true |
 | `after(date1, date2)` | True if `date1` is after `date2`. | `after("2024-12-31","2024-01-01")` → true |
 | `equals(date1, date2)` | True if same date. | `equals("2024-03-15","2024-03-15")` → true |
@@ -482,6 +573,7 @@ total = (price ?? 0) * (quantity ?? 1)
 | Function | Description | Example |
 |----------|-------------|---------|
 | `isNull(v)` | True if `v` is `null`. | `isNull(null)` → true |
+| `hasValue(v)` | True if `v` is not `null` (strict opposite of `isNull`). | `hasValue("x")` → true |
 | `isNullOrEmpty(s)` | True if `s` is `null` or empty. | `isNullOrEmpty("")` → true |
 | `isEmpty(s)` | True if string length is 0. | `isEmpty("")` → true |
 | `substring(s,start,len)` | Returns substring from start. | `substring("Hello",1,3)` → `"ell"` |
@@ -513,7 +605,33 @@ total = (price ?? 0) * (quantity ?? 1)
 | `indexOfFirst(s,sub)` | Alias for `indexOf`. | `indexOfFirst("abracadabra","bra")` → 1 |
 | `indexOfLast(s,sub)` | Last index of substring. | `indexOfLast("abracadabra","bra")` → 8 |
 
-### C.8.1 String Index Handling
+### C.8.1 String ↔ List Functions
+
+These functions bridge strings and lists, enabling expressive transformation pipelines when combined with the aggregation functions on scalar lists (§C.10).
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `chars(s)` | Returns a list of one-element strings, one per Unicode codepoint of `s`. Surrogate pairs are kept intact (a single emoji is one element, not two). `chars(null)` and `chars("")` return `[]`. | `chars("abc")` → `["a","b","c"]` |
+| `split(s, sep)` | Splits `s` into a list of substrings using `sep` as a **literal** separator (not a regular expression). `split(null, _)` → `[]`. `split(s, null)` and `split(s, "")` → `[s]` (no-op). `split("", sep)` → `[""]`. | `split("a,b,c", ",")` → `["a","b","c"]`<br>`split("a.b.c", ".")` → `["a","b","c"]` (literal dot, not regex) |
+| `join(coll, sep)` | Concatenates the elements of `coll` separated by `sep`. Non-string elements are coerced via string conversion. `null` elements are skipped. `join(null, _)` and `join([], _)` → `""`. `join(coll, null)` is treated as `join(coll, "")`. | `join(["a","b","c"], "-")` → `"a-b-c"`<br>`join([1, 2, 3], ",")` → `"1,2,3"` |
+
+**Composability.** The identity `join(chars(s), "") == s` holds for any non-null string. Combined with `map`/`filter` over scalar lists, these primitives enable expressive transformations:
+
+```js
+// Uppercase each char of a string (equivalent to toUpperCase(s))
+join(map(chars(s), toUpperCase(it)), "")
+
+// Count vowels in a string
+countIf(chars(name), in(it, ["a","e","i","o","u"]))
+
+// Extract digits and sum them
+sum(map(filter(chars(code), it >= "0" && it <= "9"), toNum(it)))
+
+// Split a CSV, keep non-empty fields, rejoin
+join(filter(split(csv, ","), it != ""), ",")
+```
+
+### C.8.2 String Index Handling
 
 String functions use **defensive index handling** to prevent runtime errors and ensure deterministic behavior.
 
@@ -541,7 +659,7 @@ padStart("Hi", 1, "x")       → "Hi"     // already long enough (no truncation)
 #### Notes
 
 - The third parameter of `substring(s, start, length)` is interpreted as a **length**, not an end index.
-- Negative lengths are **not** treated as "counting from the end" — they are simply clamped to zero.
+- Negative lengths are **not** treated as "counting from the end" - they are simply clamped to zero.
 - This ensures that all string operations remain **null-safe**, **exception-free**, and **consistent** across implementations.
 
 ---
@@ -567,7 +685,7 @@ padStart("Hi", 1, "x")       → "Hi"     // already long enough (no truncation)
 
 ## C.10 Aggregation & Utility Functions
 
-Aggregation functions operate on **collections** (arrays or maps). When the collection contains **objects**, a second parameter specifies the expression to evaluate on each element. When the collection contains **scalar values**, the aggregation operates directly on the element values and no second parameter is required.
+Aggregation functions operate on **collections** - JSON arrays, JSON objects used as maps, or list literals (§C.5.1). When the collection contains **objects**, the lambda expression typically references object properties by name. When the collection contains **scalar values** (numbers, strings, booleans), the lambda expression references the current element via `it` (see §C.4.4).
 
 | Function | Object collection | Scalar collection | Description |
 |----------|-------------------|-------------------|-------------|
@@ -577,18 +695,32 @@ Aggregation functions operate on **collections** (arrays or maps). When the coll
 | `max` | `max(collection, expr)` | `max(collection)` | Maximum value. |
 | `count` | `count(collection)` | `count(collection)` | Count of non-null elements. |
 | `countAll` | `countAll(collection)` | `countAll(collection)` | Count of all elements (including null). |
-| `countIf` | `countIf(collection, expr)` | — | Count of elements where expression is true. |
-| `exists` | `exists(collection, expr)` | — | True if at least one element satisfies the expression. |
-| `notExists` | `notExists(collection, expr)` | — | True if no element satisfies the expression. |
-| `sumIf` | `sumIf(collection, predicate, expr)` | — | Sum of `expr` for elements where `predicate` is true. |
-| `map` | `map(collection, expr)` | — | Returns a list of `expr` evaluated for each element. |
-| `filter` | `filter(collection, expr)` | — | Returns elements where `expr` is true. |
+| `countIf` | `countIf(collection, expr)` | `countIf(collection, predicate)` | Count of elements where the predicate is true. Use `it` for scalar elements. |
+| `exists` | `exists(collection, expr)` | `exists(collection, predicate)` | True if at least one element satisfies the predicate. |
+| `notExists` | `notExists(collection, expr)` | `notExists(collection, predicate)` | True if no element satisfies the predicate. |
+| `sumIf` | `sumIf(collection, predicate, expr)` | `sumIf(collection, predicate, value)` | Sum of `value` (or `it` for scalar) where `predicate` is true. |
+| `map` | `map(collection, expr)` | `map(collection, expr)` | Returns a list of `expr` evaluated for each element. Use `it` for scalar elements. |
+| `filter` | `filter(collection, expr)` | `filter(collection, predicate)` | Returns elements where `expr` is true. |
 
-The first argument can be a JSON **array** or a JSON **object used as a map** (`[*:*]`). For maps, values are iterated; keys are ignored for aggregation purposes.
+The first argument can be a JSON **array**, a JSON **object used as a map** (`[*:*]`), or any **list literal** (`[...]`). For maps, values are iterated; keys are ignored for aggregation purposes.
 
-**Note:** The `%identifier` syntax is not a function but a **reference operator** for accessing compute expressions. See [C.10.1 Compute Reference Syntax](#c101-compute-reference-syntax) for details.
+**Scalar vs object collections.** When iterating over a scalar collection, the lambda body uses `it` to reference the current element (see §C.4.4 *Rebinding inside aggregation lambdas*). When iterating over an object collection, the lambda body references the object's properties by name (the established 1.4.0 form). Both forms can be mixed in nested aggregations.
 
-### C.10.1 Membership Function — `in`
+```js
+// Object collection: existing 1.4.0 form
+sum(items, quantity * unitPrice)
+
+// Scalar collection: new 1.5.0 form
+sum([10, 20, 30])
+sum(map(chars(code), toNum(it)))    // sum of digit characters
+
+// Mixed: scalar lambda inside an object lambda
+sum(items, sum(map(chars(reference), toNum(it))))
+```
+
+**Note:** The `%identifier` syntax is not a function but a **reference operator** for accessing compute expressions. See [C.10.4 Compute Reference Syntax](#c104-compute-reference-syntax) for details.
+
+### C.10.1 Membership Function - `in`
 
 The `in` function tests whether a value belongs to a set of allowed values.
 
@@ -596,7 +728,7 @@ The `in` function tests whether a value belongs to a set of allowed values.
 
 | Form | Description | Example |
 |------|-------------|---------|
-| `in(value, 'A', 'B', 'C')` | Inline literal list | `in(status, 'DRAFT', 'SENT')` |
+| `in(value, [...])` | List literal | `in(status, ["DRAFT", "SENT"])` |
 | `in(value, '$NomenclatureName')` | Nomenclature lookup | `in(status, '$INVOICE_STATUS')` |
 | `in(value, listField)` | JSON array field | `in(code, allowedCodes)` |
 
@@ -607,7 +739,68 @@ The `in` function tests whether a value belongs to a set of allowed values.
 - When the first argument is itself a list, every element of that list must be present in the target (containsAll semantics). An empty list → `true`.
 - Comparison uses the same equality rules as `==` (numeric precision handling, cross-type string comparison).
 
-### C.10.2 Compute Reference Syntax
+> **Removed in 1.5.0:** the inline variadic form `in(value, 'A', 'B', 'C')` is no longer supported and will be physically removed in 1.6.0. Use `in(value, ['A', 'B', 'C'])` instead.
+
+### C.10.2 Lookup Function - `lookup`
+
+The `lookup` function retrieves a value from a key/value source by key.
+
+**Form:**
+
+| Form | Description | Example |
+|------|-------------|---------|
+| `lookup(key, mapField)` | JSON object used as a map: returns the value at `key`, or `null` if absent | `lookup(currency, rates)` |
+
+**Semantics:**
+
+- Returns the value associated with `key` in the source, or `null` if the key is absent.
+- `null` key → `null`. `null` source → `null`. Non-object source → `null`.
+- The returned value is the raw value as it appears in the source (no type coercion). Use `toNum`, `toStr`, etc. for explicit conversion.
+- Combine with the null-coalescing operator `??` for fallback semantics: `lookup(key, src) ?? defaultValue`.
+
+**Example - char-by-char transformation pipeline:**
+
+```js
+// Transform each char of a string using a map field, with passthrough for unknown chars
+join(map(chars(code), lookup(it, charMap) ?? it), "")
+```
+
+### C.10.3 List Element Access
+
+Five functions retrieve a **single element** from a collection (as opposed to aggregating, filtering, or mapping). They are complementary to `filter`/`map`/`sum` and compose naturally with the member-access postfix (§C.5.1).
+
+| Function | Signature | Result |
+|----------|-----------|--------|
+| `firstOf` | `firstOf(collection)` | First element, or `null` if empty. |
+| `lastOf` | `lastOf(collection)` | Last element, or `null` if empty. |
+| `findFirst` | `findFirst(collection, predicate)` | First element for which the predicate is true, or `null`. |
+| `findLast` | `findLast(collection, predicate)` | Last element (reverse iteration) for which the predicate is true, or `null`. |
+| `at` | `at(collection, index_or_key)` | Element at numeric `index` (0-based, list/array, or positional access on map values) **or** at string `key` (map only). `null` if out of bounds, not found, or type mismatch. |
+
+**Semantics:**
+
+- `null` collection → `null`; empty collection → `null`.
+- The predicate in `findFirst`/`findLast` is evaluated in the item context of §C.4.2 and §C.4.5 (all list-iteration variables are available).
+- `findLast` iterates from the end so it returns on the first match encountered; no full pass when the match is near the tail.
+- `at(collection, index)` (numeric) uses 0-based indexing. Negative indices return `null` (use `lastOf` for the last element). On a map, returns the value at that positional offset (insertion order).
+- `at(map, key)` (string) returns the value associated with `key`, or `null` if the key is absent. **Only valid on a map**: `at(list, "0")` returns `null` (no implicit String→Integer coercion).
+- Returned elements are raw values, composable with the member-access postfix:
+
+```js
+firstOf(Lines).Amount > 100
+findFirst(Payments, status == 'OK').id
+lastOf(Events).timestamp
+at(Lines, 0).price == at(Lines, 1).price
+findLast(Events, type == 'UPDATE').timestamp
+```
+
+**Equivalences:**
+
+- `at(list, 0)` ≡ `firstOf(list)` when the list is non-empty.
+- `firstOf(filter(list, pred))` ≡ `findFirst(list, pred)`.
+- `findFirst(list, true)` ≡ `firstOf(list)` on a non-empty list.
+
+### C.10.4 Compute Reference Syntax
 
 #### Referencing Compute Expressions: `%identifier`
 
@@ -664,6 +857,8 @@ When using aggregation functions (such as `sum`, `map`, `filter`), the second pa
   }
 }
 ```
+
+`%Name.field.deep` accesses members of the compute's result. Example: `"DocCurrency": "%DocRoot.DocumentCurrencyCode"`.
 
 **Benefits:**
 
@@ -872,20 +1067,22 @@ This prevents silent calculation errors and makes null handling **explicit** via
 | Nested access | `obj.field` | Null-safe nested field access |
 | Parent access | `parent.field` | Access field in parent object (§6.3.20) |
 | Root access | `root.field` | Access field at document root (§6.3.20) |
-| Field value | `it` | Value of field being validated (§C.4.4) |
+| Field value | `it` | Value of field being validated, or current scalar element inside an aggregation lambda (§C.4.4) |
 | Origin element | `origin` | Element whose validation triggered the aggregation (§C.4.5) |
 | Iteration navigation | `prev`, `next`, `first`, `last` | Positional access within aggregation lambda (§C.4.5) |
+| Iteration position | `index`, `size` | 0-based index and total size of the iterated collection within an aggregation lambda (§C.4.5) |
 | Positional predicates | `isOrigin`, `isFirst`, `isLast` | Boolean predicates within aggregation lambda (§C.4.5) |
 | Null coalescing | `a ?? b` | Return `b` if `a` is null |
+| List literal | `[a, b, c]` | Inline list of expressions (§C.5.1) |
 
 ### Validation Results
 
 | Expression Result | Validation |
 |-------------------|------------|
 | `true` | Pass |
-| `false` | Fail — `COMPUTE_VALIDATION_FAILED` |
-| `null` | Fail — `COMPUTE_TYPE_ERROR` |
-| Non-boolean | Fail — `COMPUTE_TYPE_ERROR` |
+| `false` | Fail - `COMPUTE_VALIDATION_FAILED` |
+| `null` | Fail - `COMPUTE_TYPE_ERROR` |
+| Non-boolean | Fail - `COMPUTE_TYPE_ERROR` |
 
 ### Operator Categories
 
@@ -904,9 +1101,11 @@ This prevents silent calculation errors and makes null handling **explicit** via
 |----------|-----------|
 | Date | `date`, `today`, `daysBetween`, `plusDays`, `minusDays`, `plusMonths`, `minusMonths`, `plusYears`, `minusYears`, `formatDate`, `isWeekend`, `isLeapYear`, `year`, `month`, `day`, `dayOfWeek`, `dayOfYear`, `weekOfYear`, `quarter`, `semester`, `before`, `after`, `equals` |
 | String | `length`, `substring`, `substringBefore`, `substringAfter`, `substringBeforeLast`, `substringAfterLast`, `replace`, `replaceFirst`, `replaceLast`, `trim`, `ltrim`, `rtrim`, `startsWith`, `endsWith`, `contains`, `removePrefix`, `removeSuffix`, `removeRange`, `toUpperCase`, `toLowerCase`, `capitalize`, `decapitalize`, `padStart`, `padEnd`, `repeat`, `indexOf`, `indexOfFirst`, `indexOfLast`, `isEmpty`, `isNullOrEmpty`, `isNull` |
+| String ↔ List | `chars`, `split`, `join` |
 | Numeric | `abs`, `sqrt`, `floor`, `ceil`, `round`, `mod`, `pow`, `log`, `log10`, `toInt`, `toNum`, `toStr` |
 | Aggregation | `sum`, `average`, `min`, `max`, `count`, `countAll`, `countIf`, `sumIf`, `exists`, `notExists`, `map`, `filter` |
 | Membership | `in` |
+| Lookup | `lookup` |
 
 ### Null Propagation
 
@@ -925,7 +1124,7 @@ This prevents silent calculation errors and makes null handling **explicit** via
 
 ```json
 {
-  "$okylineVersion": "1.4.0",
+  "$okylineVersion": "1.5.0",
   "$version": "1.0.0",
   "$title": "Invoice Schema with Computed Validation",
 
@@ -1032,4 +1231,13 @@ This prevents silent calculation errors and makes null handling **explicit** via
 
 ---
 
-**End of Annex C — Okyline Expression Language (Normative)**
+## Changelog
+
+- **v1.7.0 (2026-05):** `it` rebinds to the inner collection inside an aggregation lambda when the iterated element is itself a list or map, enabling explicit nested-collection traversal such as `sum(map(matrix, sum(it)))` (§C.4.4). `at(map, "key")` retrieves a value by string key on a map; `at(...)` no longer coerces String→Integer, so `at(list, "0")` returns `null` (§C.10.3). Grammar: unary operators no longer chain and two additive operators may not be adjacent (§C.5.1).
+- **v1.6.0 (2026-04):** Parameterized computes (§C.2.3) with call syntax `%Name(args)`, parameter scoping rules, and member access on object/list parameters (`p.field`); list element access functions `firstOf`, `lastOf`, `findFirst`, `findLast`, `at` (§C.10.3); member-access postfix `expr.field` on any expression (§C.5.1); dotted access on compute references `%Name.field` (§C.10.4); `hasValue(v)` as strict opposite of `isNull` (§C.8).
+- **v1.5.0 (2026-04):** List literal syntax `[a, b, c]` (§C.5); `map`/`filter`/`countIf`/`exists`/`notExists`/`sumIf` on scalar collections with `it` rebinding (§C.4.4, §C.10); `index` and `size` variables in aggregation lambdas (§C.4.5); `chars`, `split`, `join` string ↔ list primitives (§C.8.1); `lookup` function for key-value retrieval (§C.10.2); inline variadic form of `in()` removed; `toNum` now preserves arbitrary precision via Numeric.
+- **v1.4.0 (2026-04):** List context navigation (`origin`, `prev`, `next`, `first`, `last`) and positional predicates (`isOrigin`, `isFirst`, `isLast`); membership function `in()`; aggregation functions `sumIf`, `map`, `filter`; date functions `dayOfWeek`, `dayOfYear`, `weekOfYear`, `quarter`, `semester`, `before`, `after`, `equals`; string functions `substringBeforeLast`, `substringAfterLast`, `replaceFirst`, `replaceLast`, `ltrim`, `rtrim`, `removePrefix`, `removeSuffix`, `removeRange`, `indexOfFirst`, `isNull`; short-circuit evaluation for `&&`/`||`; revised operator precedence.
+
+---
+
+**End of Annex C - Okyline Expression Language (Normative)**

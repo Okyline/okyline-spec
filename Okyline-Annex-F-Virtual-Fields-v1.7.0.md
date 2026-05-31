@@ -2,9 +2,9 @@
 description: Virtual fields in Okyline - computed values that exist only during validation for conditional rules based on derived classifications, tiers, or flags.
 ---
 
-# Annex F: Virtual Fields (Normative)
+# Annex F - Virtual Fields (Normative)
 
-**Version:** 1.4.0
+**Version:** 1.7.0
 **Date:** April 2026
 **Status:** Draft
 
@@ -23,8 +23,8 @@ Virtual fields **require** the Expression Language defined in **Annex C**. Imple
 
 Virtual fields are distinct from:
 
-- **`$compute` expressions** (Annex C) — reusable expressions for field constraints
-- **`$defs` definitions** (Annex D) — reusable schema fragments
+- **`$compute` expressions** (Annex C) - reusable expressions for field constraints
+- **`$defs` definitions** (Annex D) - reusable schema fragments
 
 While `$compute` expressions validate field values, virtual fields **derive new values** from existing data for use in conditional logic.
 
@@ -40,11 +40,11 @@ Virtual fields address scenarios where conditional rules depend on **derived val
 
 Virtual fields are:
 
-- **Computed** — their value is the result of an expression evaluation
-- **Virtual** — they do not correspond to JSON properties in the validated data
-- **Scoped** — they exist only within the object where they are declared
-- **Immutable** — their value is computed once per validation context
-- **Chainable** — they can reference other virtual fields declared before them
+- **Computed** - their value is the result of an expression evaluation
+- **Virtual** - they do not correspond to JSON properties in the validated data
+- **Scoped** - they exist only within the object where they are declared
+- **Immutable** - their value is computed once per validation context
+- **Chainable** - they can reference other virtual fields declared before them
 
 ---
 
@@ -512,15 +512,15 @@ Virtual field conditions cannot be validated by JSON Schema validators. The tran
 
 ### Explanation
 
-1. **Virtual field `orderTotal`** — Captures the total for use in other computations
-2. **Virtual field `itemCount`** — Counts items in the order
-3. **Virtual field `orderTier`** — Computes tier based on `orderTotal` (chained reference)
-4. **Virtual field `isHighValue`** — Boolean flag based on `orderTotal` (chained reference)
-5. **Virtual field `isBulkOrder`** — Boolean flag based on `itemCount` (chained reference)
-6. **`$appliedIf orderTier`** — Applies different schemas based on computed tier
-7. **`$requiredIf isHighValue(true)`** — Requires approval code for high-value orders
-8. **`$appliedIf isBulkOrder(true)`** — Adds bulk order note for large orders
+1. **Virtual field `orderTotal`** - Captures the total for use in other computations
+2. **Virtual field `itemCount`** - Counts items in the order
+3. **Virtual field `orderTier`** - Computes tier based on `orderTotal` (chained reference)
+4. **Virtual field `isHighValue`** - Boolean flag based on `orderTotal` (chained reference)
+5. **Virtual field `isBulkOrder`** - Boolean flag based on `itemCount` (chained reference)
+6. **`$appliedIf orderTier`** - Applies different schemas based on computed tier
+7. **`$requiredIf isHighValue(true)`** - Requires approval code for high-value orders
+8. **`$appliedIf isBulkOrder(true)`** - Adds bulk order note for large orders
 
 ---
 
-**End of Annex F — Virtual Fields (Normative)**
+**End of Annex F - Virtual Fields (Normative)**

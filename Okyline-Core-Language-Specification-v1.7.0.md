@@ -4,8 +4,8 @@ description: Complete specification of the Okyline language - an open JSON-based
 
 # Okyline Language Specification
 
-**Version:** 1.4.0
-**Date:** April 2026
+**Version:** 1.7.0
+**Date:** May 2026
 **Status:** Draft
 
 **Okyline** is a **declarative language** designed to describe the **structure** and **constraints** of **JSON documents** in a **lightweight** and **readable** manner. It enriches **JSON examples** with **inline constraints**, enabling **data validation** while keeping schemas **human-friendly**.
@@ -17,7 +17,7 @@ description: Complete specification of the Okyline language - an open JSON-based
 ## Preamble & License
 
 **Okyline® is a registered trademark of Akwatype**. The **Open Okyline Language Specification** is licensed under the
-**Creative Commons Attribution–ShareAlike 4.0 International License (CC BY-SA 4.0).**
+**Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0).**
 
 
 **Modified versions of this specification must be clearly identified as such and must not be presented as official or endorsed by Akwatype.**
@@ -50,17 +50,18 @@ is available online:
 - Okyline Core language
 - Annex C - Expression Language
 - Annex D - Internal Schema References
+- Annex E - External imports
 - Annex F - Virtual Fields
 
 ---
 
 ## Specification Status
 
-This document is published as a Draft of the Okyline 1.4.0 specification.
+This document is published as a Draft of the Okyline 1.7.0 specification.
 The term "Draft" refers solely to the ongoing formalization of the specification text.
 
-Except for Annex E, Okyline is considered stable for practical use and is implemented by the reference implementation.
-Annex E - External Imports and Versioning - is at an advanced stage and will be published in the coming months, following final compatibility and consistency validation.
+Okyline is considered stable for practical use and is implemented by the reference implementation.
+Annex E - External Imports and Versioning - is now part of this specification and implemented by the reference implementation. Like the rest of the specification, its text remains in Draft pending final formalization.
 
 During the Draft phase, the reference implementation serves as the authoritative behavioral reference in case of ambiguity.
 
@@ -85,7 +86,7 @@ Moving to a higher level is a **deliberate design choice**, not an obligation.
 |     3 | Computed business invariants | Annex C | Business coherence rules                 |
 |     4 | Internal schema composition and reuse | Annex D | Complex contract structuring             |
 |     5 | Virtual fields for conditional logic | Annex F | Derived values in conditions             |
-|     6 | Platform governance and versioning | Annex E | Shared schema ecosystems (*in progress*) |
+|     6 | Registry and versioning | Annex E | Shared schema ecosystems |
 
 
 This progressive approach enables a smooth and incremental adoption path, starting from
@@ -524,12 +525,16 @@ Restricts the character length of string values measured in Unicode code points
 **Syntax variants:**
 - `{max}` - Maximum length
 - `{min,max}` - Minimum and maximum length
+- `{min,*}` - Minimum only (no maximum)
+- `{*}` - Any length (no constraints)
 
 **Examples:**
 ```json
 "username|{3,10}": "Alice"   // min 3, max 10 characters
 "city|{50}": "Paris"          // max 50 characters (no minimum)
 "code|{5,5}": "ABC12"         // exactly 5 characters
+"bio|{3,*}": "Hello"          // at least 3 characters (no maximum)
+"notes|{*}": "free text"      // any length
 ```
 
 **Validation:**
@@ -790,7 +795,7 @@ Marks a field as an identifier within an object. Used for enforcing uniqueness i
 
 Indicates that the example value is also the default value. This is **informational only** and does not affect validation.
 
-**Applies to:** All types
+**Applies to:** Scalars and collections of scalars
 
 **Example:**
 ```json
@@ -1310,6 +1315,25 @@ Reference a nomenclature using `($NAME)` syntax in value constraints.
 - `{"color": "RED"}` → ✅ Valid
 - `{"color": "PURPLE"}` → ❌ Invalid
 
+#### 6.1.3 Key-value form (since 1.5.0)
+
+A nomenclature entry may associate a value with each key, using `key:value` pairs separated by commas:
+
+```json
+{
+  "$nomenclature": {
+    "IbanLetters": "A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:18,J:19,K:20,L:21,M:22,N:23,O:24,P:25,Q:26,R:27,S:28,T:29,U:30,V:31,W:32,X:33,Y:34,Z:35"
+  }
+}
+```
+
+The two forms cannot be mixed within a single entry: either every item has a value, or none does.
+
+**Behaviour:**
+
+- For **validation** purposes (`($NAME)` syntax), the keys are the allowed values. Both forms are interchangeable: `"A,B,C"` and `"A:10,B:11,C:12"` accept the same inputs.
+- The associated values are accessible from expressions via `lookup(key, '$NAME')` (see Annex C §C.10.2). This enables data-driven transformations without embedding business knowledge in the expression engine - the mapping table lives in the schema, not in the code.
+
 ### 6.2 Reusable Formats - `$format`
 
 Define named regular expressions for reuse across the schema.
@@ -1553,6 +1577,19 @@ Add fields dynamically based on a condition.
 
 `$else` and `$notExist` are mutually independent: if the trigger field is absent, only `$notExist` applies (not `$else`). If the trigger field is present but matches no branch, only `$else` applies. Both can be declared in the same switch-case block.
 
+**Field redefinition in a branch.** A branch of `$appliedIf` (or any of its variants, including `$else`, `$notExist` and switch-case bodies) MAY declare fields that do not exist at the parent object level - those are simply added while the branch is active. A branch MAY also adapt a field that is already declared at the parent object level, in which case it MUST use `$override` or `$amend` as defined in Annex D §D.7. Redefining a parent-level field in a branch without `$override` or `$amend` MUST cause a schema parsing error.
+
+When `$override` or `$amend` is used, the effective field definition while the branch is active is the merge of the parent's definition and the branch's adapter, computed as defined in Annex D §D.7.3. The validator uses this merged definition instead of the parent's definition during the evaluation of the branch; a single validation is performed, never both.
+
+**Directives permitted inside a conditional block.** A conditional block behaves like an ordinary object node: besides field declarations it MAY contain the presence directives (`$required`, `$forbidden`), the structural-group directives (`$atLeastOne`, `$mutuallyExclusive`, `$exactlyOne`, `$allOrNone`) and the value-list conditional directives (`$requiredIf*`, `$forbiddenIf*`). Such directives are evaluated in the context of the host object that carries the `$appliedIf`, MAY reference both host fields and fields introduced by the active branch, and take effect only while that branch is active.
+
+Two constructs MUST NOT appear inside a conditional block:
+
+- **`$appliedIf*` (any variant)** - a structural conditional MUST NOT be nested directly inside another conditional block. To express a further structural decision, descend into an object-typed field of the block and place the inner `$appliedIf*` there, or compose both triggers into a single condition through a virtual field (Annex F).
+- **`$field` (virtual field declaration)** - virtual fields MUST be declared at the object level (Annex F), never inside a conditional block.
+
+This rule applies identically to the blocks of `$appliedIf` (§6.3.5), `$appliedIfExist` (§6.3.10) and `$appliedIfNotExist` (§6.3.11), including their `$else`, `$notExist` and switch-case bodies.
+
 #### 6.3.6 `$requiredIfExist` - Existence-Based Required
 
 Require fields if another field exists.
@@ -1621,6 +1658,8 @@ Forbid fields if another field does NOT exist.
 
 Add fields if another field exists.
 
+Its conditional block follows the same rules as `$appliedIf` (§6.3.5), including which directives are permitted or forbidden inside it.
+
 **Example:**
 ```json
 {
@@ -1640,6 +1679,8 @@ Add fields if another field exists.
 
 Add fields dynamically if another field does NOT exist.
 
+Its conditional block follows the same rules as `$appliedIf` (§6.3.5), including which directives are permitted or forbidden inside it.
+
 **Example:**
 ```json
 {
@@ -1655,7 +1696,7 @@ Add fields dynamically if another field does NOT exist.
 ```
 - If `email` does not exist, then `phone` and `phoneVerified` fields are required
 
-#### 6.3.12 `$required` — Unconditional Required Fields
+#### 6.3.12 `$required` - Unconditional Required Fields
 
 Forces the presence of listed fields in the current object.
 
@@ -1663,7 +1704,7 @@ Forces the presence of listed fields in the current object.
 
 The value MUST be a non-empty array of strings. Each string identifies a field name that MUST be present in the validated data. This directive is valid in any object node, including `$appliedIf`, `$else`, and switch-case payloads. A field already marked `@` is accepted but redundant.
 
-#### 6.3.13 `$forbidden` — Unconditional Forbidden Fields
+#### 6.3.13 `$forbidden` - Unconditional Forbidden Fields
 
 Forces the exclusion of listed fields from the current object.
 
@@ -1671,7 +1712,7 @@ Forces the exclusion of listed fields from the current object.
 
 The value MUST be a non-empty array of strings. Each string identifies a field name that MUST NOT be present in the validated data. This directive is valid in any object node, including `$appliedIf`, `$else`, and switch-case payloads.
 
-#### 6.3.14 `$atLeastOne` — At Least One Required
+#### 6.3.14 `$atLeastOne` - At Least One Required
 
 Requires that at least one field from a given group is present.
 
@@ -1693,7 +1734,7 @@ The value MUST be a non-empty array of at least two strings. At least one of the
 ```
 - At least one of `email` or `phone` must be present.
 
-#### 6.3.15 `$mutuallyExclusive` — Mutually Exclusive Fields
+#### 6.3.15 `$mutuallyExclusive` - Mutually Exclusive Fields
 
 Ensures that at most one field from a given group is present.
 
@@ -1715,7 +1756,7 @@ The value MUST be a non-empty array of at least two strings. At most one of the 
 ```
 - `cardNumber` and `iban` cannot both be present.
 
-#### 6.3.16 `$exactlyOne` — Exactly One Required
+#### 6.3.16 `$exactlyOne` - Exactly One Required
 
 Requires that exactly one field from a given group is present.
 
@@ -1737,7 +1778,7 @@ The value MUST be a non-empty array of at least two strings. Exactly one of the 
 ```
 - Exactly one of `password` or `oauthToken` must be present.
 
-#### 6.3.17 `$allOrNone` — All Or None
+#### 6.3.17 `$allOrNone` - All Or None
 
 Requires that either all fields in a group are present or none of them.
 
@@ -2156,7 +2197,7 @@ When an example value is an array but the field should accept a **single value**
 **Interpretation:**
 - Without `$obj`: Field type would be `Array[Object]`
 - With `$obj`: Field type is `Object`
-- `$obj` is purely a **type inference modifier** — it prevents array inference from the example format
+- `$obj` is purely a **type inference modifier** - it prevents array inference from the example format
 - When multiple object examples are provided, `$anyOf` semantics apply implicitly (see §5.4.2): the instance must match at least one of the examples. Use `$oneOf` to require an exclusive match.
 
 ##### Polymorphic Objects with `$oneOf`
@@ -2237,6 +2278,11 @@ An Okyline document is a JSON object that MUST contain at least the `$oky` key.
 }
 ```
 
+**Reserved root keys.** The set of keys allowed at the document root is closed:
+every root key MUST be `$oky` or one of the `$`-prefixed directives defined by
+this specification and its annexes. Any unrecognized root key MUST cause schema
+loading to fail.
+
 ### 7.2 Mandatory Key
 
 #### `$oky`
@@ -2259,7 +2305,7 @@ Specifies the version of the Okyline specification used.
 #### `$version`
 
 Version of the schema itself (not the Okyline language).
-**Optional** for standalone schemas; **required** for registry publication and external references (`$deps`, `$xDefs`)
+**Optional** for standalone schemas; **required** for registry publication and external references (`$deps`, `$import`)
 
 **Type:** String
 **Example:** `"1.2.3"`
@@ -2292,6 +2338,18 @@ Controls whether null values on non-nullable fields are treated as absent.
 **Type:** Boolean
 **Default:** `false` (null on a non-nullable field is a type error)
 
+#### `$decimalScale`
+
+Controls the decimal precision used by the validator for numeric comparisons
+and arithmetic. Affects:
+
+- comparators (`(>X)`, `(>=X)`, `(<X)`, `(<=X)`)
+- ranges (`(min..max)`)
+- computed expressions (see Annex C)
+
+When `$decimalScale` is absent, the validator MUST behave as if `6` had been
+declared.
+
 #### `$id`
 
 Unique identifier for the schema within a registry. The identifier may include a namespace using dot notation.
@@ -2307,11 +2365,24 @@ Unique identifier for the schema within a registry. The identifier may include a
 - Each segment must start with a letter and contain only alphanumeric characters and underscores
 - Pattern: `^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)*$`
 
-**Optional** for standalone schemas; **required** for registry publication and external references (`$deps`, `$xDefs`)
+**Optional** for standalone schemas; **required** for registry publication and external references (`$deps`, `$import`)
 **Examples:**
 - `"common"` - schema `common` in default namespace
 - `"sales.orders"` - schema `orders` in namespace `sales`
 - `"fr.company.billing.invoices"` - schema `invoices` in namespace `fr.company.billing`
+
+#### `$state`
+
+Declares the contract's lifecycle state, used for registry and packaging
+purposes.
+
+**Type:** String - `"DRAFT"` or `"FINAL"`
+**Default:** `"DRAFT"` when absent
+**Optional**
+
+A value other than `"DRAFT"` or `"FINAL"` MUST cause schema loading to fail.
+`$state` does not affect validation; its registry and packaging semantics are
+defined in Annex E §E.2.4.
 
 ### 7.4 Complete Example
 
@@ -2402,7 +2473,28 @@ Controls whether unknown (undeclared) fields are allowed in validated documents.
 
 ---
 
-### §7.3.6 `$nullAsAbsentIfUndeclared`
+### §7.3.6 `$sequence`
+
+#### Description
+
+Enforces field order in validated objects. When active, the fields present in the validated data MUST appear in the order declared in the schema.
+
+#### Scope and Inheritance
+
+Same model as `$additionalProperties`:
+
+- `$sequence` MAY be defined at the **root level** (applies globally).
+- `$sequence` MAY be defined **inside an object** within `$oky` (applies to that object only, not recursive).
+- Child objects inherit the global setting unless they redefine it locally.
+
+#### Normative Rules
+
+- `$sequence` defaults to `false`.
+- A local `$sequence` overrides the global setting for that object only.
+
+---
+
+### §7.3.7 `$nullAsAbsentIfUndeclared`
 
 #### Description
 Controls whether `null` values on non-nullable fields are treated as if the field were absent rather than producing a type error.
@@ -2413,7 +2505,7 @@ This directive addresses legacy systems that emit `null` instead of omitting opt
 
 - `$nullAsAbsentIfUndeclared` MAY be defined at the **root level** of the Okyline document.
 - It applies **globally** to the entire JSON structure.
-- There is **no local override** — the setting is uniform across the document.
+- There is **no local override** - the setting is uniform across the document.
 
 #### Normative Rules
 
@@ -2507,7 +2599,7 @@ Fields marked with `?` can be null or absent.
 {}                       ✅
 ```
 
-> **Note:** When `$nullAsAbsentIfUndeclared` is `true` (see §7.3.6), a `null` value on a field **without** `?` is treated as absent instead of producing a type error. Fields marked with `?` are never affected by this setting — `null` remains a valid value for them.
+> **Note:** When `$nullAsAbsentIfUndeclared` is `true` (see §7.3.6), a `null` value on a field **without** `?` is treated as absent instead of producing a type error. Fields marked with `?` are never affected by this setting - `null` remains a valid value for them.
 
 ### 8.4 String Length Validation
 
@@ -2819,7 +2911,7 @@ Examples in this table illustrate values in validated JSON instance.
 | `->` | Array/Map | Element/value constraints | `"tags|[*] -> {2,10}": ["eco"]` |
 | `!` | Array | Uniqueness | `"codes|[*] -> !": ["A","B"]` |
 | `[...:...]` | Object (map) | Map constraints | `"data|[*:10]": {...}` |
-| `%` | All | Default value (informational) | `"theme|%": "light"` |
+| `%` | Scalars, scalar collections | Default value (informational) | `"theme|%": "light"` |
 | `$oneOf` | Object/Array | Match exactly one | `"pay|$oneOf": [...]` |
 | `$anyOf` | Object/Array | Match at least one | `"notif|$anyOf": [...]` |
 
@@ -2846,8 +2938,11 @@ Examples in this table illustrate values in validated JSON instance.
 | `$version` | Root | Schema version |
 | `$title` | Root | Schema title |
 | `$description` | Root | Schema description |
-| `$additionalProperties` | Root | Allow unknown fields (default: `false`) |
+| `$state` | Root | Contract lifecycle state: `"DRAFT"` (default) or `"FINAL"`. Does not affect validation (see Annex E §E.2.4) |
+| `$additionalProperties` | Root or object | Allow unknown fields (default: `false`). Local overrides global. |
+| `$sequence` | Root or object | Enforce field order in validated objects (default: `false`). Local overrides global. |
 | `$nullAsAbsentIfUndeclared` | Root | Treat null on non-`?` fields as absent (default: `false`) |
+| `$decimalScale` | Root | Decimal precision for numeric comparisons, ranges and computes (default `6`) |
 | `$nomenclature` | Root | Reusable value registries |
 | `$format` | Root | Reusable regex patterns |
 | `//...` | Any block | Comment (attribute and subtree ignored) |
@@ -2942,14 +3037,16 @@ Examples in this table illustrate values in validated JSON instance.
 
 ## Document Information
 
-**Specification Version:** 1.4.0
-**Date:** April 2026
+**Specification Version:** 1.7.0
+**Date:** mai 2026
 **Status:** Draft
 **License:** CC BY-SA 4.0
 **Copyright:** © Akwatype - 2025-2026
 
 **Changelog:**
-- **v1.4.0 (2026-04):** Added unconditional directives `$required` and `$forbidden` (§6.3.12, §6.3.13); added structural group directives `$atLeastOne`, `$mutuallyExclusive`, `$exactlyOne`, `$allOrNone` (§6.3.14–§6.3.17); added `$nullAsAbsentIfUndeclared` directive (§7.3.6); added `$notExist` branch in `$appliedIf` switch-case (§6.3.5); `$str` support on list item constraints. Expression Language (Annex C): added list context navigation (`origin`, `prev`, `next`, `first`, `last`) and positional predicates (`isOrigin`, `isFirst`, `isLast`); added membership function `in()`; added aggregation functions `sumIf`, `map`, `filter`; added date functions `dayOfWeek`, `dayOfYear`, `weekOfYear`, `quarter`, `semester`, `before`, `after`, `equals`; added string functions `substringBeforeLast`, `substringAfterLast`, `replaceFirst`, `replaceLast`, `ltrim`, `rtrim`, `removePrefix`, `removeSuffix`, `removeRange`, `indexOfFirst`, `isNull`; short-circuit evaluation for `&&`/`||`; updated EBNF grammar with revised operator precedence
+- **v1.7.0 (2026-05):** Renamed root metadata directive `$okySchemaVersion` to `$okylineVersion` (§7.3); added `$decimalScale` directive (§7.3) controlling decimal precision for numeric comparisons, ranges and computes (default `6`); added the `$state` lifecycle directive (§7.3); added unbounded string-length variants `{min,*}` and `{*}` (§5.1.3); the set of root keys is now closed - unknown root keys are rejected (§7.1). Conditional Directives (§6.3.5): structural-group and value-list conditional directives are now allowed inside `$appliedIf*` blocks, except `$appliedIf*` and `$field` which remain forbidden. See the per-annex changelogs for Annex C (Expression Language) and Annex D (Internal References), and the new Annex E (External Imports) for cross-schema composition and versioning.
+- **v1.5.0 (2026-04):** `$nomenclature` key-value form (`"A:10,B:11"`) for data-driven mappings (§6.1.3); added the `$sequence` directive enforcing field order (§7.3.6). Expression Language (Annex C): list literal syntax `[a, b, c]`; `map`/`filter`/`countIf`/`exists`/`notExists`/`sumIf` now operate on scalar lists with `it` rebinding; `index` and `size` variables in aggregation lambdas; `chars`, `split`, `join` string ↔ list primitives; `lookup` function for key-value retrieval; inline variadic form of `in()` removed; `toNum` now preserves arbitrary precision via Numeric.
+- **v1.4.0 (2026-04):** Added unconditional directives `$required` and `$forbidden` (§6.3.12, §6.3.13); added structural group directives `$atLeastOne`, `$mutuallyExclusive`, `$exactlyOne`, `$allOrNone` (§6.3.14-§6.3.17); added `$nullAsAbsentIfUndeclared` directive (§7.3.6); added `$notExist` branch in `$appliedIf` switch-case (§6.3.5); `$str` support on list item constraints. Expression Language (Annex C): added list context navigation (`origin`, `prev`, `next`, `first`, `last`) and positional predicates (`isOrigin`, `isFirst`, `isLast`); added membership function `in()`; added aggregation functions `sumIf`, `map`, `filter`; added date functions `dayOfWeek`, `dayOfYear`, `weekOfYear`, `quarter`, `semester`, `before`, `after`, `equals`; added string functions `substringBeforeLast`, `substringAfterLast`, `replaceFirst`, `replaceLast`, `ltrim`, `rtrim`, `removePrefix`, `removeSuffix`, `removeRange`, `indexOfFirst`, `isNull`; short-circuit evaluation for `&&`/`||`; updated EBNF grammar with revised operator precedence
 - **v1.2.0 (2026-01):** Split Annex D into D (internal references) and E (external imports/versioning); terminology update (inclusion/composition instead of inheritance); moved computed expressions to Annex C; added Field Path Expressions in conditional directives (§6.3.20); added Null Literal in condition triggers (§6.3.19); added Annex F for Virtual Fields; added Comments syntax (§4.5)
 - **v1.1.0 (2025-12):** Draft update (normative clarifications, additionalProperties behavior, compute semantics, and example fixes)
 - **v1.0 (2025-11):** Initial specification release
@@ -2967,7 +3064,7 @@ Okyline® and Akwatype® are registered trademarks of Akwatype.
 
 ---
 
-*End of Okyline Language Specification v1.4.0*
+*End of Okyline Language Specification v1.7.0*
 
 > **Note:** Annexes A (Conformance) and B (Terminology) will be published in the Final version of the specification.
 
@@ -2977,7 +3074,7 @@ Okyline® and Akwatype® are registered trademarks of Akwatype.
 
 This annex defines the **Okyline Expression Language**, a pure and deterministic language for expressing computed validations. It enables business invariants such as cross-field calculations (e.g., `total == subtotal * (1 + taxRate)`) and conditional logic based on field values. Expressions are declared in a `$compute` block and referenced in field constraints using the `(%ExpressionName)` syntax.
 
-Defined in the external file "Okyline-Annex-C-Expression-language-v1.4.0.md"
+See [Annex C - Expression Language](Okyline-Annex-C-Expression-language.html)
 
 ---
 
@@ -2985,15 +3082,15 @@ Defined in the external file "Okyline-Annex-C-Expression-language-v1.4.0.md"
 
 This annex defines the **internal reference mechanism** for composing and reusing schema fragments within a single document. It introduces `$defs` for declaring reusable templates, `$ref` for including them, and `$override`/`$remove` for adapting included structures. This enables DRY (Don't Repeat Yourself) schema design while maintaining full control over structural composition.
 
-Defined in the external file "Okyline-Annex-D-Internal-References-v1.4.0.md"
+See [Annex D - Internal References](Okyline-Annex-D-Internal-References.html)
 
 ---
 
 # Annex E - External Imports and Versioning (Normative)
 
-This annex extends Annex D to enable **cross-schema composition** in enterprise environments. It defines schema identity (`$id`, `$version`), versioned dependencies (`$deps`), and external imports (`$xDefs`). Organizations can publish schemas to a registry and import definitions from other contracts while maintaining strict version control and compatibility guarantees.
+This annex extends Annex D to enable **cross-schema composition** in enterprise environments. It defines schema identity (`$id`, `$version`), versioned dependencies (`$deps`), and external imports (`$import`). Organizations can publish schemas to a registry and import definitions from other contracts while maintaining strict version control and compatibility guarantees.
 
-Defined in the external file "Okyline-Annex-E-External-Imports-v1.4.0.md"
+See [Annex E - External Imports](Okyline-Annex-E-External-Imports.html)
 
 ---
 
@@ -3003,7 +3100,7 @@ This annex defines **virtual fields** (`$field`), a mechanism to declare compute
 
 Virtual fields are computed from `$compute` expressions, scoped to the declaring object, evaluated sequentially in declaration order, and can form chains where one field depends on another. They can be used as triggers in value-based conditional directives but MUST NOT be used in existence-based directives (`$requiredIfExist`, etc.).
 
-Defined in the external file "Okyline-Annex-F-Virtual-Fields-v1.4.0.md"
+See [Annex F - Virtual Fields](Okyline-Annex-F-Virtual-Fields.html)
 
 
-*End of Okyline Annex Language Specification v1.4.0*
+*End of Okyline Annex Language Specification v1.7.0*
