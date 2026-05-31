@@ -27,7 +27,7 @@ These are the **official reference documents** for Okyline 1.7.0:
 - **Annex E - External Imports and Versioning** - [Okyline-Annex-E-External-Imports-v1.7.0.md](./Okyline-Annex-E-External-Imports-v1.7.0.md)
 - **Annex F - Virtual Fields** - [Okyline-Annex-F-Virtual-Fields-v1.7.0.md](./Okyline-Annex-F-Virtual-Fields-v1.7.0.md)
 
-> Quick references and user guides are companion (non-normative) material, published on the documentation hub: https://community.design-hub.okyline.io/
+> Quick references and user guides are companion (non-normative) material, published on the documentation hub: https://community.okyline.design-hub.okyline.io/
 
 ### License (Specification)
 
@@ -53,7 +53,7 @@ https://creativecommons.org/licenses/by-sa/4.0/
 https://community.studio.okyline.io/
 
 All free Okyline resources (guides, documentation, studio) are available at:  
-https://community.design-hub.okyline.io/
+https://community.okyline.design-hub.okyline.io/
 
 ---
 
