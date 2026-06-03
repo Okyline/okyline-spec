@@ -10,8 +10,18 @@
 
 ## Overview
 
-**Okyline** is a declarative language designed to describe the structure and constraints of JSON documents in a lightweight, readable way.  
-It enriches simple JSON examples with inline constraints, making validation easier while keeping schemas human-friendly.
+**Okyline is a declarative, example-driven language for describing and validating JSON data**. 
+
+An Okyline schema is a real example of data, enriched with built-in constraints. 
+It remains readable while serving as an enforceable contract. 
+A single Okyline contract expresses both the data structure 
+(types, presence, enumerations, lengths, models, key uniqueness) 
+and its cross-field business invariants 
+(consistency, conditional requirements, exact decimal arithmetic, and ordering constraints) 
+through a pure and deterministic expression language. 
+It also defines version management and cross-schema composition 
+(semantic versions, dependencies, imports, visibility), 
+so that contracts can be shared and evolved across teams.
 
 This repository hosts the **official Okyline Language Specification** (version 1.7.0, May 2026).
 
